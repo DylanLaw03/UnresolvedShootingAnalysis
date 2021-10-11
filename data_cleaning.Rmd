@@ -1,6 +1,8 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Data Cleaning & Early Analysis"
+output:
+  html_document:
+    df_print: paged
 ---
 
 
@@ -8,16 +10,20 @@ output: html_notebook
 ```{r}
 #Load libraries in
 library(tidyverse)
+library(lubridate)
 
 #Load data in
 shooting_data <- read.csv("data/raw_data/unsolvedshootings_offenses.csv")
+
+#convert occurred_date from a string to date
+shooting_data$occurred_date = as.Date(shooting_data$occurred_date)
 
 #a tibble
 tibble(shooting_data)
 ```
 
 
-```{r Cleaning Data}
+```{r Cleaning Data, fig.width = 15}
 #First we are going to isolate the data for San Diego 
 
 #Print all unique values for source
@@ -25,7 +31,25 @@ unique(shooting_data$source)
 
 #filter out San Diego
 san_diego_shootings <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
+
 #a tibble of san_diego_shootings
 tibble(san_diego_shootings)
+```
 
+```{r Offenses By Day, fig.width = 15}
+#Creating a graph of shootings by month
+monthly_shootings <- san_diego_shootings %>% 
+  #cunt for occurred_date
+  count(occurred_date) %>%
+  #group by month using lubricate
+  group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
+  #sum each month
+  summarize(n = sum(n))
+  
+#creating plot
+offenses_by_day <- 
+  ggplot(monthly_shootings, aes(x = week, y = n)) +
+  geom_line(size = 1)
+
+offenses_by_day
 ```
