@@ -6,5 +6,26 @@ output: html_notebook
 
 
 ```{r}
-plot(cars)
+#Load libraries in
+library(tidyverse)
+
+#Load data in
+shooting_data <- read.csv("data/raw_data/unsolvedshootings_offenses.csv")
+
+#a tibble
+tibble(shooting_data)
+```
+
+
+```{r Cleaning Data}
+#First we are going to isolate the data for San Diego 
+
+#Print all unique values for source
+unique(shooting_data$source)
+
+#filter out San Diego
+san_diego_shootings <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
+#a tibble of san_diego_shootings
+tibble(san_diego_shootings)
+
 ```
