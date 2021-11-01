@@ -19,32 +19,63 @@ shooting_data <- read.csv("data/raw_data/unsolvedshootings_offenses.csv")
 #convert occurred_date from a string to date
 shooting_data$occurred_date = as.Date(shooting_data$occurred_date)
 
-#a tibble
+head(shooting_data)
 ```
 
-```{r Offenses By Day, fig.width = 15}
-
-#filter out San Diego
-san_diego_shootings <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
-
+Let's look at the number of shootings and other violent offenses per week in the United States.
+```{r Offenses By Week}
 
 #Creating a graph of shootings by month
-monthly_shootings <- san_diego_shootings %>% 
+weekly_shootings <- shooting_data %>% 
   #cunt for occurred_date
   count(occurred_date) %>%
   #group by month using lubricate
   group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
-  #sum each month
+  #sum each weej
   summarize(n = sum(n))
-#Remove last week, major outlier
-monthly_shootings <- head(monthly_shootings, -1)
   
   
 #creating plot
 offenses_by_week <- 
   ggplot(monthly_shootings, aes(x = week, y = n)) +
-  labs(x = "Week", y = "Shooting in a Week", title = "Number of Shooting per Week in San Diego County") +
+  labs(x = "Week", y = "Shooting in a Week", title = "Number of Offenses by week in the United States") +
   geom_line(size = 1)
 
-offenses_by_weel
+offenses_by_week
+```
+
+
+The data is not reported evenly across locations over the same period of time, so let's look at San Diego County.
+```{r More Data Cleaning}
+#filter out any entires not in San Diego
+san_diego_data <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
+
+#count # of shootings per week
+#Creating a graph of shootings by month
+san_diego_weekly <- san_diego_data %>% 
+  #cunt for occurred_date
+  count(occurred_date) %>%
+  #group by month using lubricate
+  group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
+  #sum each weej
+  summarize(n = sum(n))
+
+#remove incomplete final week
+san_diego_weekly <- head(san_diego_weekly, -1)
+
+
+#create the same graph for San Diego
+SD_offenses_by_week <- 
+  ggplot(san_diego_weekly, aes(x = week, y = n)) +
+  labs(x = "Week", y = "Shooting in a Week", title = "Number of Offenses by week in San Diego") +
+  geom_line(size = .5, color = "blue") + 
+  theme_light() +
+  theme(plot.title = element_text(hjust = .5, face = "bold", size = 18))
+
+SD_offenses_by_week
+
+```
+Let's take a look at specific offenses
+```{r By Offenses}
+
 ```
