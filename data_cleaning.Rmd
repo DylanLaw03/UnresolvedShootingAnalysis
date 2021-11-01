@@ -3,11 +3,12 @@ title: "Data Cleaning & Early Analysis"
 output:
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 #Load libraries in
 library(tidyverse)
 library(lubridate)
@@ -19,24 +20,14 @@ shooting_data <- read.csv("data/raw_data/unsolvedshootings_offenses.csv")
 shooting_data$occurred_date = as.Date(shooting_data$occurred_date)
 
 #a tibble
-tibble(shooting_data)
 ```
 
-
-```{r Cleaning Data, fig.width = 15}
-#First we are going to isolate the data for San Diego 
-
-#Print all unique values for source
-unique(shooting_data$source)
+```{r Offenses By Day, fig.width = 15}
 
 #filter out San Diego
 san_diego_shootings <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
 
-#a tibble of san_diego_shootings
-tibble(san_diego_shootings)
-```
 
-```{r Offenses By Day, fig.width = 15}
 #Creating a graph of shootings by month
 monthly_shootings <- san_diego_shootings %>% 
   #cunt for occurred_date
@@ -45,11 +36,15 @@ monthly_shootings <- san_diego_shootings %>%
   group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
   #sum each month
   summarize(n = sum(n))
+#Remove last week, major outlier
+monthly_shootings <- head(monthly_shootings, -1)
+  
   
 #creating plot
-offenses_by_day <- 
+offenses_by_week <- 
   ggplot(monthly_shootings, aes(x = week, y = n)) +
+  labs(x = "Week", y = "Shooting in a Week", title = "Number of Shooting per Week in San Diego County") +
   geom_line(size = 1)
 
-offenses_by_day
+offenses_by_weel
 ```
