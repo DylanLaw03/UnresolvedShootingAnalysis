@@ -1,0 +1,314 @@
+---
+title: "Data Cleaning & Early Analysis"
+subtitle: "Dylan Lawrence and Hallie Hinchman"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+### Introduction:
+
+  This data set comes from BuzzFeed News and The Trace. It provides observational information on nearly 750,000 incidents of crime reported by 22 municipal police departments in the United States. The year of the incidents range across multiple decades, though the bulk of the data are from 2013-2016. Aside from Wilmington, the police departments are located in fairly large cities. The types of crime incidents in the data are homicide, aggravated assault, and non-fatal shootings, though not all police departments reported data in all three of these categories. The data provide 31 variables, including the date, time, weapon type, and victim's age and race. Once again, all 31 variables are not provided for every observation.
+The data are a sample of all the reported crime incidents in the United States in years that records were available. However, the sample selection was only based on which police departments had the most detailed data available regarding the variables of interest in the study. Therefore, we do not suspect sampling bias.
+
+  The data were collected by requesting records from the police departments and/or retrieving online data. Then, the data were standardized in order to categorize the information under common variables. The only problematic detail with the standardization is the handful of reported incidents which analysts from BuzzFeed News and The Trace had to use their best judgment to categorize. For instance, in cases where the department did not categorize the crime type of an incident, analysts were usually able to categorize them based on descriptions of the incident, but not always.
+
+  We are interested in this data because it describes violent crime in the US, which is a subject that affects a myriad of people. Additionally, crime is a political buzzword right now due to its disproportionate effects on communities of color. The large number of observations and inclusion of variables such as race and domestic violence in this data set allow us to analyze the topic on a broad level by comparing data from different cities as well as compare trends in violent crime over time. Further, since many of the cases are still open, we looked for factors such as race that might correlate with unresolved crimes.
+
+  The years for which records of crime incidents were available are not consistent between the 22 police departments. Thus, we decided to focus on one: San Diego. Further, we grouped the data by week to be able to better see trends in crime incidents over time, as opposed to looking at every incident as an individual data point.
+
+
+```{r, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+
+
+#Load libraries in
+pacman::p_load(tidyverse, lubridate)  
+pacman::p_load(skimr, C50, OneR, caret, caTools, rpart, rpart.plot)
+
+#Load data in
+shooting_data <- read.csv("data/raw_data/unsolvedshootings_offenses.csv")
+
+#convert occurred_date from a string to date
+shooting_data$occurred_date = as.Date(shooting_data$occurred_date)
+shooting_data$victim_age = strtoi(shooting_data$victim_age)
+```
+
+### Offenses by Week
+
+  Let's look at the number of shootings and other violent offenses per week in the United States.
+
+  This graph suggests an enormous increase in unresolved violent crimes in the United States beginning around 2001 followed by a sharp decrease around 2017. This is a misrepresentation, since the major discrepancies in data points is largely a result of more data being available for these years. However, there are consistent peaks and dips that occur about every year, suggesting that there may be certain times of year in which more violent crimes occur. Overall, we concluded from this graph that it would be more helpful to narrow our focus to one police department to reduce the impact of inconsistent reporting time frames from different police departments.
+```{r Offenses By Week, warning=FALSE, message=FALSE}
+
+#Creating a graph of shootings by month
+weekly_shootings <- shooting_data %>% 
+  #count for occurred_date
+  count(occurred_date) %>%
+  #group by month using lubricate
+  group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
+  #sum each week
+  summarize(n = sum(n))
+  
+  
+#creating plot
+offenses_by_week <- 
+  ggplot(weekly_shootings, aes(x = week, y = n)) +
+  labs(x = "Time", y = "Offenses in a Week", title = "Number of Offenses by week in the United States") +
+  geom_line(size = 1)
+
+offenses_by_week
+```
+
+### Offenses by Week in San Diego
+
+  The data is not reported evenly across locations over the same period of time, so let's look at San Diego.
+
+  The extreme oscillation in this graph makes it difficult to see a trend in the San Diego data. Thus, we added a linear regression line. This line allows us to see an overall decrease in shootings per week in San Diego from 2007 to 2018. The average shootings decreased from about 73 to about 63 per week. The decrease in violent crime reveals a trend that was not made clear in the first graph, which was influenced by the inconsistency in reporting time frames across police departments. As the San Francisco data support, there was actually a decrease in violent crime across the United States from 2008 to 2018 - a trend which has been recently disrupted by violent interactions between Black Lives Matter protestors and police.
+```{r More Data Cleaning, message=FALSE}
+#filter out any entries not in San Diego
+san_diego_data <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
+
+#count # of shootings per week
+#Creating a graph of shootings by month
+san_diego_weekly <- san_diego_data %>% 
+  #cunt for occurred_date
+  count(occurred_date) %>%
+  #group by month using lubricate
+  group_by(week = lubridate::floor_date(occurred_date, "week")) %>%
+  #sum each weej
+  summarize(n = sum(n))
+
+#remove incomplete final week
+san_diego_weekly <- head(san_diego_weekly, -1)
+
+
+#create the same graph for San Diego
+SD_offenses_by_week <- 
+  ggplot(san_diego_weekly, aes(x = week, y = n)) +
+  labs(x = "Time", y = "Offenses in a Week", title = "Number of Offenses by Week in San Diego") +
+  geom_line(size = .5, color = "black") + 
+  geom_smooth(method = "lm") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = .5, face = "bold", size = 18))
+
+SD_offenses_by_week
+
+```
+
+### Offenses by Hour in San Diego
+
+  This graph is a density plot of the hours at which the recorded crimes occurred. It shows that the least likely time for a violent offense to occur is around 7 a.m., and the likelihood increases from that point until about 9 p.m., when the concentration of incidents begins to fall. Aside from a peak around 1 a.m., the density continues to fall until 7 a.m.
+
+  The low concentration of crime between 3 and 7 a.m. is logical, as the vast majority of people are asleep during this time. The sharp increase in crimes around 5 p.m. makes sense as well, since this is when most Americans get out of work. It is possible that the increased crime late at night is related to alcohol consumption.
+
+```{r By Time}
+#add the hour that the offense occurred
+san_diego_occured_hour <- san_diego_data %>% 
+  mutate(occured_hour = strtoi(substr(san_diego_data$occurred_time, 1, 2))) %>% 
+  #filter NAs
+  filter(!is.na(occured_hour))
+
+
+plot_by_time <- 
+  ggplot(san_diego_occured_hour, aes(occured_hour)) +
+  geom_density(fill = "midnightblue") +
+  labs(title = "Density of Offenses by Time", x = "Hour", y = "Density") +
+  scale_x_continuous(breaks = seq(0,23, by = 4))
+
+
+plot_by_time
+
+
+```
+### Offenses by Type in San Diego
+
+Let's take a look at specific offenses.
+
+  The first histogram shows us the proportion each specific crime makes up of the total offenses. The second shows us the count of each type of crime. Both graphs demonstrate that aggravated assault with a weapon other than a gun was the most frequent type of crime reported. This type of offense comprises almost 85% of cases, followed by aggravated assault with a gun which makes up about 13% of total offenses. 
+  These graphs show that most violent crime does not result in the death of the victim, as homicides only constitute about 1% of the data. Homicide is one of the most serious offenses a person can commit, so it makes sense that it would occur less frequently than other violent crimes.
+```{r By Offenses}
+#First how many of each offense is there?
+san_diego_data %>% count(offense_category)
+#that's not very specific
+
+san_diego_data %>% count(top_local_classification) %>% arrange(desc(n))
+#a little too vague now
+
+n_offenses <- san_diego_data %>% count(offense_group) %>% mutate(n_prop = n/sum(n))
+n_offenses
+#good level of  detail
+
+#let's build a bar graph
+bar_offenses <- 
+  ggplot(data = n_offenses, aes(x = offense_group, y = n_prop, fill = offense_group)) +
+  geom_col() +
+  geom_text(aes(label = round(n_prop, 4))) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = .6), legend.position = "none") +
+  labs(title = "Type of Offense by Proportion", fill = "Offense Group", x = "Offense Group", y = "Proportion")
+
+#Let's see the same thing but by count
+bar_offenses_n <- 
+  ggplot(data = n_offenses, aes(x = offense_group, y = n, fill = offense_group)) +
+  geom_col() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90), legend.position = "none") +
+  labs(fill = "Offense Group", y = "Number of Offenses", x = "Offense Group", title = "Type of Offense by Count")
+
+bar_offenses
+bar_offenses_n
+
+```
+
+### Case Clearance by Victim's Race in San Diego
+
+  In these charts we investigate possible correlation between the clearance status of cases and the race of the victim. We can see that a greater proportion of cases involving Black or Hispanic victims remain open when compared to cases involving White victims. This could be due to systemic racism that could cause less time and effort to be put toward solving cases in which the victim was a person of color as opposed to when the victim was White.
+
+  This visual also tells us that victims of violent crime are more often Hispanic or Black than White. Considering 65% of San Diego's population is White, we can deduce that people of color are disproportionately affected by violent crime.
+
+  Finally, this set of graphs demonstrates that almost half of violent crimes in San Diego remain unsolved. This is a startling fact that begs the question of how we can improve our police system to reduce the number of unsolved violent crimes and provide closure and justice for more families who are impacted by these offenses.
+
+```{r Clear by Race}
+ggplot(san_diego_data, aes(clearance_status, fill = victim_race_condensed)) +
+  geom_bar() +
+  facet_wrap(~victim_race_condensed, ncol = 1) +
+  labs(y = "Number of cases", x = "Clearance Status", title = "Case Clearance by Race") +
+  theme(legend.position = "none")
+san_diego_tree_data <- san_diego_data %>% 
+  select(-row_hash, -agency_ori, -agency_incident_id, -source, -arrest_ind, -arrest_date, -clearance_date)
+```
+
+### Predicting Clearance Status for San Diego Cases
+
+  In this analysis, we use a recursive partitioning and regression tree (rpart) to predict the clearance status of an offense based on the other variables. First, we split the data into training (80%) and testing (20%) subsets. Then, we remove incompatible and overlapping variables and create a regression tree model using the training subset. Finally, we use the model to predict clearance status in the test subset and create a confusion matrix to compare its predictions with the actual statuses.
+  The regression tree shows that the most influential variable on clearance status is domestic violence. Most cases where domestic violence occurred were cleared. The next most influential variable is categories of crime such as homicide and aggravated assault. Our model had an accuracy of 63.3%
+
+```{r Regression Tree}
+set.seed(1234)
+
+
+
+
+holdout_split <- function(df, pred, train_percent = 0.80){
+
+  df_y <- df[,pred]
+  df_split <- sample.split(df_y, SplitRatio = train_percent)
+  
+  return(list(train_x = tibble(df[df_split, colnames(df)!=pred]), 
+              train_y = df_y[df_split], 
+              test_x = tibble(df[!df_split, colnames(df)!=pred]), 
+              test_y = df_y[!df_split]))
+}
+
+
+#Cleaning data for training
+
+san_diego_data <- shooting_data %>% filter(source == "SAN-DIEGO-MAIN")
+
+san_diego_data$clearance_status <- if_else(san_diego_data$clearance_status == "OPEN", "OPEN", "CLOSED")
+
+san_diego_data$top_local_classification <- substr(san_diego_data$top_local_classification, 1, 1)
+
+san_diego_data$victim_age <- strtoi(san_diego_data$victim_age)
+
+san_diego_data$firearm_ind <- if_else(san_diego_data$firearm_ind == "Y", "Y", "N")
+
+san_diego_data <- san_diego_data %>% select(-row_hash,
+                                            -source,
+                                            -agency_ori,
+                                            -agency_incident_id,
+                                            -occurred_date,
+                                            -top_ucr_classification,
+                                            -nibrs_code,
+                                            -agency_name,
+                                            -occurred_time,
+                                            -victim_ethnicity,
+                                            -clearance_date,
+                                            -arrest_date,
+                                            -gang_activity_ind,
+                                            -family_violence_ind,
+                                            -circumstance,
+                                            -clearance_group,
+                                            -case_status,
+                                            -arrest_ind,
+                                            -relationship_to_offender,
+                                            -weapon,
+                                            -victim_sex,
+                                            -victim_race,
+                                            -inside_outside,
+                                            -offense_group)
+
+
+
+san_diego_data <- na.omit(san_diego_data)
+
+san_diego_data <- san_diego_data %>% mutate(across(
+                                                  .cols = where(is.character),
+                                                  .fns = factor))
+
+
+sd_holdout <- holdout_split(san_diego_data, pred = "clearance_status")
+
+#head(sd_holdout$train_y, 6)
+#head(sd_holdout$test_y, 6)
+
+table(sd_holdout$train_y) %>% prop.table()
+table(sd_holdout$test_y) %>% prop.table()
+
+
+sd_train <- data.frame(sd_holdout$train_x, Cleared = sd_holdout$train_y)
+#training
+sd_tree <- rpart(Cleared ~ ., 
+                 data = sd_train,
+                 method = "class")
+
+
+
+summary(sd_tree)
+
+
+tree_plot <- rpart.plot(sd_tree, digits = 3,
+             fallen.leaves = F,
+             type = 0, extra = 101,
+             box.palette = 'auto',
+             shadow.col = 'black')
+
+
+
+tree_plot
+
+
+sd_predict <- predict(object = sd_tree,
+                      newdata = sd_holdout$test_x,
+                      type = "class")
+
+
+sd_cm <- 
+  confusionMatrix(data = sd_predict, 
+                  reference = sd_holdout$test_y,
+                  positive = "OPEN",
+                  dnn = c('predicted status', 'actual status'))
+
+sd_cm
+
+```
+
+
+### Conclusions 
+
+  From 2007 to 2018, there was a slight decrease in violent crime in San Diego. Of these offenses, aggravated assault with a weapon other than a gun was by far the most common type of crime. This is an interesting data point, considering how much media attention is received by gun violence. Of course, gun violence is a serious issue. However, we wonder if there is a way to address violent offenses using other weapons, since these are far more common, though probably not as deadly.
+  Violent crimes in San Diego were most likely to occur between 6:00 p.m. and 2:30 a.m. This makes sense because it is usually dark outside during these hours, meaning people are probably more likely to commit crimes in hopes of getting away with it. Further, we believe alcohol use to be more pertinent at night, which could lead to inhibited judgment and a higher likelihood of commiting a crime. The density is very low from 4am to 9am, when most people are asleep or getting ready for work.
+  A higher proportion of violent crimes involving victims of color remain unsolved than the proportion of crimes involving White victims that are unsolved, suggesting the possibility of racial injustices in the justice system in San Diego and/or at the national level. On a broader scale, people of color are more frequently affected by violent crime than White people. This is an important area of study which needs to continue to be addressed. We believe this inequity to be attributed to the disadvantageous position of many people of color in the US. This rings true in education, housing, and income, which could increase the likelihood of crime.
+  Finally, whether a crime involves domestic violence is an influential factor in whether it gets cleared. The category of crime is also influential. 
+
+
+### Limitations 
+
+  The biggest limitation to our investigation of this data was the inconsistency in the availability of data across time. This hindered our ability to look at all the data through a broad lens; we had to limit our focus to data from one police department at a time. 
+  We were also limited in the machine learning techniques we were able to use because the majority of the variables of interest were categorical. Thus, we could not use K-Nearest Neighbors or linear regression.
+
+### Future Investigations
+
+  Going forward, it would be interesting to investigate whether there is a correlation between the time of day the crime occurred and its clearance status. This would be valuable information for police departments to determine if there are times of day when perpetrators are more likely to get away with offenses. This could influence how many officers are on duty to try to decrease the number of unsolved crimes.
+  Another potential area of analysis is the types of non-gun weapons that are most commonly used against victims. We wonder if these are legal items used as weapons, such as knives, or if they are things we could regulate in hopes of reducing violent crime.
